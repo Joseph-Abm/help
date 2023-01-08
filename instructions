@@ -1,0 +1,245 @@
+project setup
+--------------------------------------------
+
+command prompt:
+	nest new _______
+project terminal:
+	nest g module ______
+	nest g controller _________
+	nest g service ___________
+
+
+
+
+DB setup
+--------------------------------------------
+
+-> install @nestjs/mongoose and mongoose
+
+-> import mongoosemodule.forRoot('URI') in main module
+
+-> create model file
+
+-> setup typescript interface with props
+
+-> import * as mongoose
+
+-> setup mongoose schema in a const using a new mongoose.Schema
+
+-> import mongoosemodule.forFeature in dedicated module using name and schema
+
+-> setup constructor with inject model decorator in dedicated service file (with type Model from mongoose)
+
+
+
+
+Bcrypt setup
+--------------------------------------------
+
+install bcrypt and @types/bcrypt
+ 
+-> in signup service  import and use hash()
+
+-> in sign in service import and use compare()
+
+
+
+
+Session setup
+--------------------------------------------
+
+install cookie-session and @types/cookie-session
+
+-> in main.ts file import cookie session (old way using const)
+
+-> also add middleware calling cookieSession passing keys:[] and maxAge in ms (360000 is 1 hour)
+
+-> in the dedicated controller, pass the session using session decorator and assign desired object to it typically user id
+
+
+
+
+Dto setup
+--------------------------------------------
+
+-> create a dto folder and dedicated dto files using classes class the class validator lib
+
+-> in main.ts add:(import validationpipes from @nestjs/common)
+
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true
+    }),
+  );
+
+
+
+
+Interceptor setup
+--------------------------------------------
+-> create interceptors folder in src
+
+-> create serialize interceptor file
+
+import {
+    UseInterceptors,
+    NestInterceptor,
+    ExecutionContext,
+    CallHandler
+} from '@nestjs/common';
+import { Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
+import { plainToClass } from 'class-transformer';
+
+interface ClassConstructor {
+    new(...args: any[]): {};
+}
+
+export function Serialize(dto: ClassConstructor) {
+    return UseInterceptors(new SerializeInterceptor(dto));
+}
+
+export class SerializeInterceptor implements NestInterceptor {
+    constructor(private dto: ClassConstructor) { }
+    intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+        //pre
+        return next.handle().pipe(
+            map((data: any) => {
+                //post
+                return plainToClass(this.dto, data, {
+                    excludeExtraneousValues: true,
+                });
+            })
+        );
+    }
+}
+
+(cpy paste)
+
+then create dto with expose decorator to expose needed fields and call serialize on the controller fed with the dto
+
+
+
+
+custom param decorators
+------------------------------------------------------
+-> create decorators folder in dedicated folder(etc user folder)
+-> create ____.decorator.ts file
+
+import {
+    createParamDecorator,
+    ExecutionContext
+} from '@nestjs/common';
+
+
+export const XXXXXXXX = createParamDecorator(
+    (data: any, context: ExecutionContext) => {
+        //put code here and return something
+    }
+)
+(cpy paste) and complete code
+
+-> use the decorator as an argument to a controller.
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+for fetching current user (CurrentUser Decorator)
+
+->in users/decorators/current-user.decorator.ts
+
+import {
+    createParamDecorator,
+    ExecutionContext
+} from '@nestjs/common';
+
+export const CurretUser = createParamDecorator(
+    (data: never, context: ExecutionContext) => {
+        const request = context.switchToHttp().getRequest();
+        return request.currentUser;
+    }
+)
+
+->in users/interceptors/current-user.interceptor.ts
+
+import{
+    NestInterceptor,
+    ExecutionContext,
+    CallHandler,
+    Injectable
+} from '@nestjs/common';
+import { request } from 'http';
+
+import { UsersService } from '../users.service';
+
+@Injectable()
+export class CurrentUserInterceptor implements NestInterceptor {
+    
+    constructor(private usersService: UsersService) {}
+
+    async intercept(context:ExecutionContext, handler: CallHandler){
+        const request = context.switchToHttp().getRequest()
+        const {userId} = request.session;
+
+        if (userId){
+            const user = await this.usersService.findOneById(userId);
+            request.currentUser = user;
+        }
+
+        return handler.handle();
+    }
+}
+
+-> in the controller import CurrentUserInterceptor and CurrentUser and UseInterceptors(in nestjs common)
+-> add @UseInterceptors(CurrentUserInterceptor) after @serialize
+-> add CurrentUserInterceptor to the list of providers in the user module
+
+~~~~~~~~~~~~~~~~~~~~
+
+-> if we want to use global interceptors import APP_INTERCEPTOR from nestjs core
+-> add this to the list of providers instaed of CurrentUserInterceptor 
+
+{
+	provide: APP_INTERCEPTOR,
+	useClass: CurrentUserInterceptor
+}
+
+-> get rid of the decorators in the controller
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+
+custom guards
+------------------------------------------------------
+
+-> add guards folder in src and create .guard.ts file
+
+import {
+    CanActivate,
+    ExecutionContext
+} from '@nestjs/common'
+import { Observable } from 'rxjs';
+
+export class AuthGuard implements CanActivate {
+    canActivate(context: ExecutionContext) {
+        const request = context.switchToHttp().getRequest();
+        return request.session.userId;
+    }
+}
+
+-> then in the controller import AuthGuard and useGuards
+
+
+###############################################################################################
+workflow 
+
+usually start by setting up the user service and controller,  auth service and mongoose,
+
+so: usercontroller -> authService-> userService-> mongoose
+
+usercontroller: get info from body, call authservice for signup or signin set cookie session userid
+
+authService: check if email exist and if no call userservice/ check if email is correct for sign in and call user service
+
+userService: creating the user using the db model injection.
